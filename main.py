@@ -21,7 +21,7 @@ class Rescale(object):
         self.output_size = output_size
 
     def __call__(self, sample):
-        image, label = sample['image'], sample['label']
+        image, cls, label = sample['image'],sample['class'], sample['label']
 
         h, w = image.shape[:2]
         if isinstance(self.output_size, int):
@@ -39,7 +39,7 @@ class Rescale(object):
         # h and w are swapped for landmarks because for images,
         # x and y axes are axis 1 and 0 respectively
 
-        return {'image': img, 'label': label}
+        return {'image': img, 'class': cls, 'label': label}
 
 class RandomCrop(object):
     """Crop randomly the image in a sample.
@@ -58,7 +58,7 @@ class RandomCrop(object):
             self.output_size = output_size
 
     def __call__(self, sample):
-        image, label = sample['image'], sample['label']
+        image, cls, label = sample['image'], sample['class'], sample['label']
 
         h, w = image.shape[:2]
         new_h, new_w = self.output_size
@@ -69,13 +69,13 @@ class RandomCrop(object):
         image = image[top: top + new_h,
                       left: left + new_w]
 
-        return {'image': image, 'label': label}
+        return {'image': image, 'class': cls, 'label': label}
 
 class ToTensor(object):
     """Convert ndarrays in sample to Tensors."""
 
     def __call__(self, sample):
-        image, label = sample['image'], sample['label']
+        image, cls, label = sample['image'], sample['class'], sample['label']
 
         # swap color axis because
         # numpy image: H x W x C
@@ -84,20 +84,24 @@ class ToTensor(object):
         # print("*"*10,image.shape)
         image = image.transpose((2, 0, 1))
         return {'image': torch.from_numpy(image),
-                'label': label}
+                'class':cls,
+                'label': label}#torch.Tensor(label)
 
 class WhaleDataset(Dataset):
     """Face Landmarks dataset."""
 
-    def __init__(self, csv_file, root_dir, transform=None):
+    def __init__(self, csv_file, root_dir,cls_csv, transform=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
             root_dir (string): Directory with all the images.
             transform (callable, optional): Optional transform to be applied
                 on a sample.
+            #########
+            cls_csv(string):类别与标签对应的表
         """
         self.img = pd.read_csv(csv_file)
+        self.cls_label = pd.read_csv(cls_csv)
         self.root_dir = root_dir
         self.transform = transform
 
@@ -107,12 +111,12 @@ class WhaleDataset(Dataset):
     def __getitem__(self, idx):
         img_name = os.path.join(self.root_dir,
                                 self.img.iloc[idx, 0])
-
         img_label = self.img.iloc[idx, 1]
+        label = self.cls_label[self.cls_label.cls == img_label].index.tolist()[0]
         image = io.imread(img_name)
         # landmarks = self.img.iloc[idx, 1:].as_matrix()
         # landmarks = landmarks.astype('float').reshape(-1, 2)
-        sample = {'image': image, 'label': img_label}
+        sample = {'image': image, 'class':img_label,'label': label}
 
         if self.transform:
             sample = self.transform(sample)
@@ -131,7 +135,7 @@ def show_image(image):
 def show_whale_batch(sample_batched):
     """Show image with landmarks for a batch of samples."""
     images_batch, label_batch = \
-            sample_batched['image'], sample_batched['label']
+            sample_batched['image'], sample_batched['class']
     batch_size = len(images_batch)
     # print('batch_size:',batch_size)
     im_size = images_batch.size(2)
@@ -142,29 +146,30 @@ def show_whale_batch(sample_batched):
 def main():
     transformed_dataset = WhaleDataset(csv_file='results.csv',
                                        root_dir='dataset/',
+                                       cls_csv='class_label.csv',
                                        transform=transforms.Compose([
                                            Rescale(256),
                                            RandomCrop(224),
                                            ToTensor()]))
 
-    # for i in range(len(transformed_dataset)):
-    #     sample = transformed_dataset[i]
-    #     print(i, sample['image'].size(), sample['label'])
-    #     if i == 3:
-    #         break
-    dataloader = DataLoader(transformed_dataset, batch_size=4,
+    dataloader = DataLoader(transformed_dataset, batch_size=2,
                             shuffle=True, num_workers=1)
 
-    for i_batch, sample_batched in enumerate(dataloader):
+    # for i_batch, sample_batched in enumerate(dataloader):
+    #
+    #     print(i_batch, sample_batched['image'].size(),sample_batched['label'],
+    #           sample_batched['class'])
+    #     plt.figure()
+    #     # print('len_sample_batched',len(sample_batched))
+    #     show_whale_batch(sample_batched)
+    #     plt.axis('off')
+    #     plt.ioff()
+    #     plt.show()
 
-        print(i_batch, sample_batched['image'].size(),
-              sample_batched['label'])
-        plt.figure()
-        # print('len_sample_batched',len(sample_batched))
-        show_whale_batch(sample_batched)
-        plt.axis('off')
-        plt.ioff()
-        plt.show()
+
+
+    for i_batch, sample_batched in enumerate(dataloader):
+        pass
 
         # observe 4th batch and stop.
         # if i_batch == 3:
